@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.config import DB_BUSY_TIMEOUT_SECONDS
+
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
 
@@ -15,11 +17,13 @@ def connect(path: str) -> sqlite3.Connection:
     # check_same_thread=False: FastAPI may run dependency setup/teardown and the
     # endpoint in different threadpool threads; one connection is still used by
     # one request at a time.
-    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+    # timeout: SQLite's busy timeout — wait this long for the write lock instead of
+    # failing immediately with "database is locked" (that error becomes a 503, see main.py).
+    conn = sqlite3.connect(
+        path, timeout=DB_BUSY_TIMEOUT_SECONDS, isolation_level=None, check_same_thread=False
+    )
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    # Wait for the write lock instead of failing immediately with "database is locked".
-    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 

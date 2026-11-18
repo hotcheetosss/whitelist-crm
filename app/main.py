@@ -60,6 +60,16 @@ def register_error_handlers(app: FastAPI) -> None:
         logger.warning("Integrity error on %s %s: %s", request.method, request.url.path, exc)
         return error_response(409, "constraint_violation", "Операция нарушает ограничения данных")
 
+    @app.exception_handler(sqlite3.OperationalError)
+    async def handle_operational_error(request: Request, exc: sqlite3.OperationalError) -> JSONResponse:
+        # "database is locked": another request held the write lock longer than the busy
+        # timeout. The transaction is not committed, nothing is saved, so the client can retry.
+        if "locked" in str(exc) or "busy" in str(exc):
+            logger.warning("Database busy on %s %s: %s", request.method, request.url.path, exc)
+            return error_response(503, "database_busy", "База данных занята, повторите запрос через несколько секунд")
+        logger.exception("Database error on %s %s", request.method, request.url.path)
+        return error_response(500, "internal_error", "Внутренняя ошибка сервера")
+
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         # The stack trace goes to the log, never to the client.

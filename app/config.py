@@ -13,6 +13,9 @@ from zoneinfo import ZoneInfo
 DEFAULT_DATABASE_PATH = "./data/crm.db"
 PORT = int(os.environ.get("PORT", "8000"))
 
+# How long a request waits for the SQLite write lock before answering 503.
+DB_BUSY_TIMEOUT_SECONDS = 5.0
+
 
 def database_path() -> str:
     """Read lazily so tests and scripts can set DATABASE_PATH before app creation."""
