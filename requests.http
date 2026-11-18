@@ -1,0 +1,134 @@
+### WhiteList CRM — примеры запросов.
+### Рассчитаны на пустую базу и выполнение сверху вниз (VS Code REST Client / JetBrains HTTP Client).
+### Даты встреч — в будущем (декабрь 2026); если файл запускается позже, поменяйте даты.
+
+@base = http://localhost:8000
+
+### 1. Менеджер
+POST {{base}}/managers
+Content-Type: application/json
+
+{"name": "Айгерим Тестова"}
+
+### 2. Второй менеджер
+POST {{base}}/managers
+Content-Type: application/json
+
+{"name": "Ерлан Примеров"}
+
+### 3. Список менеджеров
+GET {{base}}/managers
+
+### 4. Организация (вымышленные БИН и телефон)
+POST {{base}}/companies
+Content-Type: application/json
+
+{"name": "ТОО «Ромашка»", "bin": "990140000001", "phone": "+77000000001"}
+
+### 5. Вторая организация
+POST {{base}}/companies
+Content-Type: application/json
+
+{"name": "ТОО «Василёк»", "bin": "990140000002", "phone": "+77000000002"}
+
+### 6. Дубль БИН -> 409 duplicate_bin
+POST {{base}}/companies
+Content-Type: application/json
+
+{"name": "Копия", "bin": "990140000001"}
+
+### 7. Невалидный БИН -> 422
+POST {{base}}/companies
+Content-Type: application/json
+
+{"name": "Ошибка", "bin": "123"}
+
+### 8. Звонок без ответа
+POST {{base}}/calls
+Content-Type: application/json
+
+{"company_id": 1, "result": "no_answer", "comment": "Не взяли трубку"}
+
+### 9. meeting_set без встречи -> 422 meeting_required
+POST {{base}}/calls
+Content-Type: application/json
+
+{"company_id": 1, "result": "meeting_set"}
+
+### 10. Встреча: пн 07.12.2026 10:00 по Алматы (передано со смещением, вернётся в UTC: 05:00Z)
+POST {{base}}/meetings
+Content-Type: application/json
+
+{"company_id": 1, "manager_id": 1, "starts_at": "2026-12-07T10:00:00+05:00"}
+
+### 11. Звонок с назначенной встречей -> статус организации meeting_set
+POST {{base}}/calls
+Content-Type: application/json
+
+{"company_id": 1, "result": "meeting_set", "meeting_id": 1}
+
+### 12. Пересечение у менеджера (10:30) -> 409 manager_busy
+POST {{base}}/meetings
+Content-Type: application/json
+
+{"company_id": 2, "manager_id": 1, "starts_at": "2026-12-07T05:30:00Z"}
+
+### 13. Стык 11:00–12:00 -> 201, не конфликт
+POST {{base}}/meetings
+Content-Type: application/json
+
+{"company_id": 2, "manager_id": 1, "starts_at": "2026-12-07T06:00:00Z"}
+
+### 14. Вторая активная встреча у организации 1 (другой менеджер) -> 409 company_has_active_meeting
+POST {{base}}/meetings
+Content-Type: application/json
+
+{"company_id": 1, "manager_id": 2, "starts_at": "2026-12-08T05:00:00Z"}
+
+### 15. Вне рабочих часов (17:30 Алматы) -> 422 outside_working_hours
+POST {{base}}/meetings
+Content-Type: application/json
+
+{"company_id": 1, "manager_id": 2, "starts_at": "2026-12-07T12:30:00Z"}
+
+### 16. Время без часового пояса -> 422
+POST {{base}}/meetings
+Content-Type: application/json
+
+{"company_id": 1, "manager_id": 2, "starts_at": "2026-12-07T10:00:00"}
+
+### 17. Перенос встречи 1 на вт 08.12.2026 10:00 Алматы
+PATCH {{base}}/meetings/1
+Content-Type: application/json
+
+{"starts_at": "2026-12-08T05:00:00Z"}
+
+### 18. Встреча с историей: original_starts_at не изменился
+GET {{base}}/meetings/1
+
+### 19. Расписание менеджера на день (по Алматы)
+GET {{base}}/managers/1/schedule?date=2026-12-07
+
+### 20. Отмена встречи 2
+PATCH {{base}}/meetings/2
+Content-Type: application/json
+
+{"status": "cancelled"}
+
+### 21. Повторная отмена -> 409 meeting_cancelled
+PATCH {{base}}/meetings/2
+Content-Type: application/json
+
+{"status": "cancelled"}
+
+### 22. Организации со статусом meeting_set
+GET {{base}}/companies?status=meeting_set
+
+### 23. Все организации с пагинацией
+GET {{base}}/companies?limit=10&offset=0
+
+### 24. Звонки организации 1
+GET {{base}}/calls?company_id=1
+
+### 25. Не найдено -> 404
+GET {{base}}/meetings/999
