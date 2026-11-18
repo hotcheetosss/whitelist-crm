@@ -14,7 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import PORT, database_path
 from app.db import apply_migrations
 from app.errors import DomainError
-from app.routers import companies, managers, meetings
+from app.routers import calls, companies, managers, meetings
 
 logger = logging.getLogger("crm")
 
@@ -81,6 +81,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.include_router(companies.router)
     app.include_router(managers.router)
     app.include_router(meetings.router)
+    app.include_router(calls.router)
     return app
 
 
