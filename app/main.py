@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import PORT, database_path
 from app.db import apply_migrations
 from app.errors import DomainError
+from app.routers import companies, managers
 
 logger = logging.getLogger("crm")
 
@@ -77,6 +78,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app = FastAPI(title="WhiteList CRM", lifespan=lifespan)
     app.state.db_path = path
     register_error_handlers(app)
+    app.include_router(companies.router)
+    app.include_router(managers.router)
     return app
 
 
