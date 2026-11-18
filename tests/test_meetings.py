@@ -147,7 +147,7 @@ def test_other_manager_can_take_the_same_slot(client):
 def test_cancelled_meeting_frees_the_manager_slot(client):
     manager = make_manager(client)
     meeting = book(client, make_company(client), manager, MONDAY_10_00).json()
-    assert client.post(f"/meetings/{meeting['id']}/cancel").status_code == 200
+    assert client.patch(f"/meetings/{meeting['id']}", json={"status": "cancelled"}).status_code == 200
     assert book(client, make_company(client), manager, MONDAY_10_00).status_code == 201
 
 
@@ -167,7 +167,7 @@ def test_company_cannot_have_two_active_meetings_even_with_different_managers(cl
 def test_company_can_book_again_after_cancel(client):
     company, manager = make_company(client), make_manager(client)
     meeting = book(client, company, manager, MONDAY_10_00).json()
-    client.post(f"/meetings/{meeting['id']}/cancel")
+    client.patch(f"/meetings/{meeting['id']}", json={"status": "cancelled"})
     assert book(client, company, manager, TUESDAY_10_00).status_code == 201
 
 
@@ -184,8 +184,8 @@ def test_company_can_book_again_after_previous_meeting_has_ended(client, clock):
 def test_reschedule_keeps_original_time_and_appends_history(client, db):
     meeting = book(client, make_company(client), make_manager(client), MONDAY_10_00).json()
 
-    first = client.post(f"/meetings/{meeting['id']}/reschedule", json={"starts_at": TUESDAY_10_00})
-    second = client.post(f"/meetings/{meeting['id']}/reschedule", json={"starts_at": "2026-11-25T05:00:00Z"})
+    first = client.patch(f"/meetings/{meeting['id']}", json={"starts_at": TUESDAY_10_00})
+    second = client.patch(f"/meetings/{meeting['id']}", json={"starts_at": "2026-11-25T05:00:00Z"})
 
     assert first.status_code == 200 and second.status_code == 200, second.text
     body = second.json()
@@ -207,7 +207,7 @@ def test_reschedule_into_conflict_is_rejected_and_meeting_unchanged(client, db):
     book(client, make_company(client), manager, MONDAY_10_00)
     meeting = book(client, make_company(client), manager, TUESDAY_10_00).json()
 
-    response = client.post(f"/meetings/{meeting['id']}/reschedule", json={"starts_at": "2026-11-23T05:30:00Z"})
+    response = client.patch(f"/meetings/{meeting['id']}", json={"starts_at": "2026-11-23T05:30:00Z"})
 
     assert_error(response, 409, "manager_busy")
     after = client.get(f"/meetings/{meeting['id']}").json()
@@ -217,20 +217,20 @@ def test_reschedule_into_conflict_is_rejected_and_meeting_unchanged(client, db):
 
 def test_reschedule_outside_working_hours_is_rejected(client):
     meeting = book(client, make_company(client), make_manager(client), MONDAY_10_00).json()
-    response = client.post(f"/meetings/{meeting['id']}/reschedule", json={"starts_at": "2026-11-23T12:30:00Z"})
+    response = client.patch(f"/meetings/{meeting['id']}", json={"starts_at": "2026-11-23T12:30:00Z"})
     assert_error(response, 422, "outside_working_hours")
 
 
 def test_reschedule_may_overlap_its_own_old_slot(client):
     # Moving 10:00 -> 10:30 overlaps only the meeting itself, which must be excluded.
     meeting = book(client, make_company(client), make_manager(client), MONDAY_10_00).json()
-    response = client.post(f"/meetings/{meeting['id']}/reschedule", json={"starts_at": "2026-11-23T05:30:00Z"})
+    response = client.patch(f"/meetings/{meeting['id']}", json={"starts_at": "2026-11-23T05:30:00Z"})
     assert response.status_code == 200, response.text
 
 
 def test_cancelled_meeting_cannot_be_rescheduled_or_cancelled_again(client, db):
     meeting = book(client, make_company(client), make_manager(client), MONDAY_10_00).json()
-    cancelled = client.post(f"/meetings/{meeting['id']}/cancel").json()
+    cancelled = client.patch(f"/meetings/{meeting['id']}", json={"status": "cancelled"}).json()
     assert cancelled["status"] == "cancelled"
     assert cancelled["history"][-1] == {
         "action": "cancelled",
@@ -240,11 +240,11 @@ def test_cancelled_meeting_cannot_be_rescheduled_or_cancelled_again(client, db):
     }
 
     assert_error(
-        client.post(f"/meetings/{meeting['id']}/reschedule", json={"starts_at": TUESDAY_10_00}),
+        client.patch(f"/meetings/{meeting['id']}", json={"starts_at": TUESDAY_10_00}),
         409,
         "meeting_cancelled",
     )
-    assert_error(client.post(f"/meetings/{meeting['id']}/cancel"), 409, "meeting_cancelled")
+    assert_error(client.patch(f"/meetings/{meeting['id']}", json={"status": "cancelled"}), 409, "meeting_cancelled")
     assert db.execute("SELECT COUNT(*) FROM meeting_events").fetchone()[0] == 2
 
 
@@ -252,11 +252,11 @@ def test_started_meeting_cannot_be_changed(client, clock):
     meeting = book(client, make_company(client), make_manager(client), MONDAY_10_00).json()
     clock.now = clock.now.replace(day=23, hour=5) + timedelta(minutes=10)  # 10:10 Almaty
     assert_error(
-        client.post(f"/meetings/{meeting['id']}/reschedule", json={"starts_at": TUESDAY_10_00}),
+        client.patch(f"/meetings/{meeting['id']}", json={"starts_at": TUESDAY_10_00}),
         409,
         "meeting_already_started",
     )
-    assert_error(client.post(f"/meetings/{meeting['id']}/cancel"), 409, "meeting_already_started")
+    assert_error(client.patch(f"/meetings/{meeting['id']}", json={"status": "cancelled"}), 409, "meeting_already_started")
 
 
 def test_meeting_events_table_is_append_only(client, db):
@@ -275,7 +275,7 @@ def test_manager_schedule_for_almaty_day(client):
     late = book(client, make_company(client), manager, "2026-11-23T11:00:00Z").json()
     early = book(client, make_company(client), manager, MONDAY_09_00).json()
     cancelled = book(client, make_company(client), manager, MONDAY_10_00).json()
-    client.post(f"/meetings/{cancelled['id']}/cancel")
+    client.patch(f"/meetings/{cancelled['id']}", json={"status": "cancelled"})
     book(client, make_company(client), manager, TUESDAY_10_00)  # another day
     book(client, make_company(client), other_manager, MONDAY_10_00)  # another manager
 
@@ -292,3 +292,23 @@ def test_schedule_errors(client):
     assert_error(client.get("/managers/999/schedule", params={"date": "2026-11-23"}), 404, "manager_not_found")
     assert_error(client.get(f"/managers/{manager}/schedule", params={"date": "23.11.2026"}), 422, "validation_error")
     assert_error(client.get(f"/managers/{manager}/schedule"), 422, "validation_error")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},  # no action
+        {"starts_at": TUESDAY_10_00, "status": "cancelled"},  # two actions at once
+        {"status": "scheduled"},  # only cancelling via status is allowed
+        {"starts_at": TUESDAY_10_00, "manager_id": 2},  # manager cannot be changed
+    ],
+)
+def test_patch_requires_exactly_one_valid_action(client, payload):
+    meeting = book(client, make_company(client), make_manager(client), MONDAY_10_00).json()
+    assert_error(client.patch(f"/meetings/{meeting['id']}", json=payload), 422, "validation_error")
+    after = client.get(f"/meetings/{meeting['id']}").json()
+    assert (after["starts_at"], after["status"], len(after["history"])) == (MONDAY_10_00, "scheduled", 1)
+
+
+def test_patch_unknown_meeting_is_404(client):
+    assert_error(client.patch("/meetings/999", json={"status": "cancelled"}), 404, "meeting_not_found")

@@ -53,7 +53,7 @@ def test_meeting_set_with_another_company_meeting_is_422(client, db):
 def test_meeting_set_with_cancelled_meeting_is_422(client, db):
     company = make_company(client)
     meeting = book(client, company, make_manager(client), MONDAY_10_00).json()
-    client.post(f"/meetings/{meeting['id']}/cancel")
+    client.patch(f"/meetings/{meeting['id']}", json={"status": "cancelled"})
 
     response = client.post("/calls", json={"company_id": company, "result": "meeting_set", "meeting_id": meeting["id"]})
 

@@ -7,7 +7,7 @@ it is always calculated by the server.
 from datetime import date, datetime, timezone
 from typing import Annotated, Generic, Literal, TypeVar
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, StringConstraints, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, StringConstraints, field_validator, model_validator
 
 CompanyStatus = Literal["new", "no_answer", "refused", "meeting_set"]
 CallResult = Literal["no_answer", "refused", "meeting_set"]
@@ -68,25 +68,41 @@ class CompanyOut(BaseModel):
 # --- Meetings ----------------------------------------------------------------
 
 
-class MeetingTime(RequestModel):
+def normalize_start(value: datetime | None) -> datetime | None:
+    """Meeting start must be a whole minute; it is stored and compared in UTC."""
+    if value is None:
+        return None
+    if value.second != 0 or value.microsecond != 0:
+        raise ValueError("время начала должно быть целой минутой (секунды = 0)")
+    return value.astimezone(timezone.utc)
+
+
+class MeetingCreate(RequestModel):
+    company_id: int
+    manager_id: int
     # AwareDatetime: a time without a timezone is rejected with 422.
     starts_at: AwareDatetime
 
-    @field_validator("starts_at")
-    @classmethod
-    def normalize_start(cls, value: datetime) -> datetime:
-        if value.second != 0 or value.microsecond != 0:
-            raise ValueError("время начала должно быть целой минутой (секунды = 0)")
-        return value.astimezone(timezone.utc)
+    _normalize_start = field_validator("starts_at")(normalize_start)
 
 
-class MeetingCreate(MeetingTime):
-    company_id: int
-    manager_id: int
+class MeetingUpdate(RequestModel):
+    """PATCH /meetings/{id}: exactly one action per request.
 
+    {"starts_at": "..."}      -> reschedule
+    {"status": "cancelled"}   -> cancel
+    """
 
-class MeetingReschedule(MeetingTime):
-    pass
+    starts_at: AwareDatetime | None = None
+    status: Literal["cancelled"] | None = None
+
+    _normalize_start = field_validator("starts_at")(normalize_start)
+
+    @model_validator(mode="after")
+    def exactly_one_action(self) -> "MeetingUpdate":
+        if (self.starts_at is None) == (self.status is None):
+            raise ValueError("укажите либо starts_at (перенос), либо status=cancelled (отмена)")
+        return self
 
 
 class MeetingEventOut(BaseModel):

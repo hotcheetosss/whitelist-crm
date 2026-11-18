@@ -13,7 +13,7 @@ from app.config import BUSINESS_TZ, MEETING_DURATION
 from app.db import write_transaction
 from app.errors import Conflict, NotFound, ValidationFailed
 from app.rules import business_day_bounds, format_local_range, from_utc_text, is_within_working_hours, to_utc_text
-from app.schemas import MeetingCreate, MeetingReschedule
+from app.schemas import MeetingCreate, MeetingUpdate
 from app.services.companies import get_company
 from app.services.managers import get_manager
 
@@ -157,10 +157,18 @@ def create_meeting(conn: sqlite3.Connection, data: MeetingCreate, now: datetime)
     return get_meeting(conn, meeting_id)
 
 
-def reschedule_meeting(
-    conn: sqlite3.Connection, meeting_id: int, data: MeetingReschedule, now: datetime
+def update_meeting(
+    conn: sqlite3.Connection, meeting_id: int, data: MeetingUpdate, now: datetime
 ) -> dict[str, Any]:
-    starts_at = data.starts_at
+    """PATCH /meetings/{id}: the schema guarantees exactly one of status / starts_at."""
+    if data.status == "cancelled":
+        return cancel_meeting(conn, meeting_id, now)
+    return reschedule_meeting(conn, meeting_id, data.starts_at, now)
+
+
+def reschedule_meeting(
+    conn: sqlite3.Connection, meeting_id: int, starts_at: datetime, now: datetime
+) -> dict[str, Any]:
     ends_at = starts_at + MEETING_DURATION
     with write_transaction(conn):
         row = _get_meeting_row(conn, meeting_id)

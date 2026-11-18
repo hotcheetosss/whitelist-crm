@@ -4,7 +4,7 @@ from datetime import date, datetime
 from fastapi import APIRouter, Depends, Query
 
 from app.deps import get_conn, get_now
-from app.schemas import ManagerSchedule, MeetingCreate, MeetingOut, MeetingReschedule
+from app.schemas import ManagerSchedule, MeetingCreate, MeetingOut, MeetingUpdate
 from app.services import meetings
 
 router = APIRouter(tags=["meetings"])
@@ -24,23 +24,15 @@ def get_meeting(meeting_id: int, conn: sqlite3.Connection = Depends(get_conn)) -
     return meetings.get_meeting(conn, meeting_id)
 
 
-@router.post("/meetings/{meeting_id}/reschedule", response_model=MeetingOut)
-def reschedule_meeting(
+@router.patch("/meetings/{meeting_id}", response_model=MeetingOut)
+def update_meeting(
     meeting_id: int,
-    data: MeetingReschedule,
+    data: MeetingUpdate,
     conn: sqlite3.Connection = Depends(get_conn),
     now: datetime = Depends(get_now),
 ) -> dict:
-    return meetings.reschedule_meeting(conn, meeting_id, data, now)
-
-
-@router.post("/meetings/{meeting_id}/cancel", response_model=MeetingOut)
-def cancel_meeting(
-    meeting_id: int,
-    conn: sqlite3.Connection = Depends(get_conn),
-    now: datetime = Depends(get_now),
-) -> dict:
-    return meetings.cancel_meeting(conn, meeting_id, now)
+    """Reschedule ({"starts_at": ...}) or cancel ({"status": "cancelled"}) a meeting."""
+    return meetings.update_meeting(conn, meeting_id, data, now)
 
 
 @router.get("/managers/{manager_id}/schedule", response_model=ManagerSchedule)
