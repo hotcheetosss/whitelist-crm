@@ -1,0 +1,10 @@
+services:
+  api:
+    build: .
+    environment:
+      DATABASE_PATH: /app/data/crm.db
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
